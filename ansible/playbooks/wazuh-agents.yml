@@ -1,0 +1,64 @@
+---
+# ============================================================
+#  Installation et enregistrement des agents Wazuh
+#  Usage : ansible-playbook playbooks/wazuh-agents.yml
+# ============================================================
+
+- name: Installation des agents Wazuh sur les hôtes Linux
+  hosts: apps
+  become: true
+  vars:
+    wazuh_repo_key_url: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+
+  tasks:
+    - name: Ajouter la clé GPG du dépôt Wazuh
+      ansible.builtin.apt_key:
+        url: "{{ wazuh_repo_key_url }}"
+        state: present
+        keyring: /usr/share/keyrings/wazuh.gpg
+
+    - name: Ajouter le dépôt Wazuh
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main"
+        state: present
+        filename: wazuh
+
+    - name: Installer wazuh-agent
+      ansible.builtin.apt:
+        name: wazuh-agent
+        state: present
+        update_cache: yes
+      environment:
+        WAZUH_MANAGER: "{{ wazuh_manager_ip }}"
+        WAZUH_AGENT_GROUP: "linux"
+
+    - name: Configurer le manager dans ossec.conf (au cas où non pris au paquet)
+      ansible.builtin.replace:
+        path: /var/ossec/etc/ossec.conf
+        regexp: '<address>MANAGER_IP</address>'
+        replace: "<address>{{ wazuh_manager_ip }}</address>"
+
+    - name: Activer et démarrer wazuh-agent
+      ansible.builtin.systemd:
+        name: wazuh-agent
+        enabled: yes
+        state: started
+
+- name: Déploiement des règles personnalisées D1-D6 sur le manager
+  hosts: siem
+  become: true
+  tasks:
+    - name: Copier local_rules.xml (règles D1-D6)
+      ansible.builtin.copy:
+        src: ../roles/wazuh-rules/files/local_rules.xml
+        dest: /var/ossec/etc/rules/local_rules.xml
+        owner: wazuh
+        group: wazuh
+        mode: "0640"
+      notify: restart wazuh-manager
+
+  handlers:
+    - name: restart wazuh-manager
+      ansible.builtin.systemd:
+        name: wazuh-manager
+        state: restarted

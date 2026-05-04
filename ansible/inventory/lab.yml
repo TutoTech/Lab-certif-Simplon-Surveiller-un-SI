@@ -1,0 +1,23 @@
+---
+all:
+  vars:
+    ansible_user: debian
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+
+  children:
+    apps:
+      hosts:
+        apps-lab:
+          ansible_host: 10.10.10.10
+
+    siem:
+      hosts:
+        wazuh-lab:
+          ansible_host: 10.10.10.20
+          ansible_user: root  # le LXC est provisionné avec un mdp root, pas de user debian
+
+    linux:
+      children:
+        apps:
+        siem:

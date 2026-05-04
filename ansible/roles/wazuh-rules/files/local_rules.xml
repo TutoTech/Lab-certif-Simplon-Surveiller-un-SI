@@ -1,0 +1,124 @@
+<!--
+============================================================
+  TutoTech Lab — Règles Wazuh personnalisées (D1 → D6)
+  Ces règles correspondent aux 6 incidents redoutés du rapport
+  de certification.
+  Fichier déployé dans /var/ossec/etc/rules/local_rules.xml
+============================================================
+-->
+
+<group name="tutotech,authentication_success_after_failures,">
+
+  <!-- D1 — Brute-force suivi d'un succès (couvre R1 : compromission de compte admin) -->
+  <rule id="100200" level="12" frequency="5" timeframe="120">
+    <if_matched_sid>5715</if_matched_sid>  <!-- ssh auth failure -->
+    <if_sid>5501</if_sid>                  <!-- pam session opened -->
+    <same_source_ip />
+    <description>D1 — Brute-force suivi d'un succès SSH depuis la même IP source</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>tutotech,d1,attack,</group>
+  </rule>
+
+</group>
+
+<group name="tutotech,suricata_corr,">
+
+  <!-- D2 — Alerte Suricata web-attack corrélée avec code HTTP anormal (couvre R2) -->
+  <rule id="100210" level="14">
+    <if_sid>86601</if_sid>  <!-- Suricata: alert event -->
+    <field name="alert.category">Web Application Attack|Attempted Administrator Privilege Gain</field>
+    <description>D2 — Tentative d'exploitation web détectée par Suricata sur le périmètre TutoTech</description>
+    <mitre>
+      <id>T1190</id>
+    </mitre>
+    <group>tutotech,d2,attack,</group>
+  </rule>
+
+</group>
+
+<group name="tutotech,admingo_app,">
+
+  <!-- D3 — Pattern d'injection SQL ou XSS dans les requêtes vers /admingo/* (couvre R3) -->
+  <rule id="100220" level="13">
+    <decoded_as>json</decoded_as>
+    <field name="RequestPath">/admingo/.*</field>
+    <field name="RequestMethod">GET|POST</field>
+    <regex>(\bunion\b.+\bselect\b|&lt;script&gt;|onerror=|';--|\bor\b\s+1=1)</regex>
+    <description>D3 — Pattern d'injection détecté dans une requête vers AdminGo</description>
+    <mitre>
+      <id>T1190</id>
+      <id>T1059</id>
+    </mitre>
+    <group>tutotech,d3,attack,</group>
+  </rule>
+
+</group>
+
+<group name="tutotech,data_exfil,">
+
+  <!-- D4 — Volume sortant anormal depuis la VM apps (couvre R4) -->
+  <rule id="100230" level="12" frequency="50" timeframe="60">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature">ET POLICY .* Outbound</field>
+    <same_source_ip />
+    <description>D4 — Volume de trafic sortant anormalement élevé depuis la VM apps (potentielle exfiltration)</description>
+    <mitre>
+      <id>T1567</id>
+    </mitre>
+    <group>tutotech,d4,attack,</group>
+  </rule>
+
+  <!-- D4 bis — Requête SQL massive sur tables d'utilisateurs -->
+  <rule id="100231" level="12">
+    <decoded_as>mysql_log</decoded_as>
+    <regex>SELECT.*FROM\s+(mdl_user|wp_users|apprenants).*LIMIT\s+\d{4,}</regex>
+    <description>D4 — Requête SQL massive sur une table d'utilisateurs</description>
+    <mitre>
+      <id>T1213</id>
+    </mitre>
+    <group>tutotech,d4,attack,</group>
+  </rule>
+
+</group>
+
+<group name="tutotech,ransomware_indicators,">
+
+  <!-- D5 — Modification massive de fichiers (FIM Wazuh) (couvre R5) -->
+  <rule id="100240" level="14" frequency="100" timeframe="60">
+    <if_sid>550,553,554</if_sid>  <!-- syscheck file integrity -->
+    <description>D5 — Modification massive de fichiers détectée (potentiel rançongiciel)</description>
+    <mitre>
+      <id>T1486</id>
+    </mitre>
+    <group>tutotech,d5,attack,</group>
+  </rule>
+
+  <!-- D5 bis — Apparition d'extensions caractéristiques de chiffrement -->
+  <rule id="100241" level="14">
+    <if_sid>550,554</if_sid>
+    <field name="file">.*\.(locked|encrypted|enc|crypt|ransom|wcry|wncry)$</field>
+    <description>D5 — Fichier renommé avec extension de rançongiciel connue</description>
+    <mitre>
+      <id>T1486</id>
+    </mitre>
+    <group>tutotech,d5,attack,</group>
+  </rule>
+
+</group>
+
+<group name="tutotech,dos_detection,">
+
+  <!-- D6 — Trafic anormalement élevé sur les ports HTTP/HTTPS (couvre R6) -->
+  <rule id="100250" level="12" frequency="500" timeframe="300">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature">ET DOS .*HTTP</field>
+    <description>D6 — Pic de trafic HTTP/HTTPS détecté (potentiel déni de service)</description>
+    <mitre>
+      <id>T1498</id>
+    </mitre>
+    <group>tutotech,d6,attack,</group>
+  </rule>
+
+</group>

@@ -1,0 +1,7 @@
+---
+# Variables communes à tous les hôtes du lab
+lab_domain: lab.tutotech.org
+lab_subnet: 10.10.10.0/24
+lab_gateway: 10.10.10.1
+wazuh_manager_ip: 10.10.10.20
+timezone: Europe/Paris

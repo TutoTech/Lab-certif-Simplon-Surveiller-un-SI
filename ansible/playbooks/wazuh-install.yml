@@ -1,0 +1,79 @@
+---
+# ============================================================
+#  Installation Wazuh all-in-one via le script officiel
+#  Usage : ansible-playbook playbooks/wazuh-install.yml
+# ============================================================
+
+- name: Installation Wazuh all-in-one
+  hosts: siem
+  become: true
+  vars:
+    wazuh_install_dir: /opt/wazuh-install
+    wazuh_install_script: "{{ wazuh_install_dir }}/wazuh-install.sh"
+    wazuh_config_file: "{{ wazuh_install_dir }}/config.yml"
+
+  tasks:
+    - name: Télécharger le script d'installation Wazuh
+      ansible.builtin.get_url:
+        url: https://packages.wazuh.com/4.9/wazuh-install.sh
+        dest: "{{ wazuh_install_script }}"
+        mode: "0700"
+
+    - name: Télécharger le générateur de config
+      ansible.builtin.get_url:
+        url: https://packages.wazuh.com/4.9/config.yml
+        dest: "{{ wazuh_config_file }}"
+        mode: "0600"
+
+    - name: Adapter config.yml pour le déploiement single-node
+      ansible.builtin.copy:
+        dest: "{{ wazuh_config_file }}"
+        mode: "0600"
+        content: |
+          nodes:
+            indexer:
+              - name: wazuh-indexer
+                ip: "{{ wazuh_manager_ip }}"
+            server:
+              - name: wazuh-manager
+                ip: "{{ wazuh_manager_ip }}"
+            dashboard:
+              - name: wazuh-dashboard
+                ip: "{{ wazuh_manager_ip }}"
+
+    - name: Vérifier si Wazuh est déjà installé
+      ansible.builtin.stat:
+        path: /var/ossec
+      register: wazuh_present
+
+    - name: Générer les certificats internes
+      ansible.builtin.command:
+        cmd: "{{ wazuh_install_script }} --generate-config-files"
+        chdir: "{{ wazuh_install_dir }}"
+      when: not wazuh_present.stat.exists
+      register: gen_certs
+      changed_when: gen_certs.rc == 0
+
+    - name: Lancer l'installation all-in-one
+      ansible.builtin.command:
+        cmd: "{{ wazuh_install_script }} -a -i"
+        chdir: "{{ wazuh_install_dir }}"
+      when: not wazuh_present.stat.exists
+      register: wazuh_install
+      changed_when: wazuh_install.rc == 0
+      async: 1800
+      poll: 30
+
+    - name: Récupérer le fichier de mots de passe générés
+      ansible.builtin.fetch:
+        src: "{{ wazuh_install_dir }}/wazuh-passwords.txt"
+        dest: "../../wazuh-credentials.txt"
+        flat: true
+      ignore_errors: true
+
+    - name: Afficher l'URL d'accès et un rappel sécurité
+      ansible.builtin.debug:
+        msg:
+          - "Wazuh installé. Dashboard accessible sur https://{{ wazuh_manager_ip }} (https://wazuh.lab.tutotech.org via VPN)."
+          - "Identifiants récupérés dans wazuh-credentials.txt à la racine du repo."
+          - "⚠️  Mettez ce fichier dans votre coffre-fort puis SUPPRIMEZ-LE de l'arborescence locale."

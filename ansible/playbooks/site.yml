@@ -1,0 +1,81 @@
+---
+# ============================================================
+#  TutoTech Lab — Playbook orchestrateur
+#  Usage : ansible-playbook playbooks/site.yml
+# ============================================================
+
+- name: Common — mise à jour, fail2ban, durcissement
+  hosts: linux
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: Apt update + upgrade
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: dist
+        cache_valid_time: 3600
+
+    - name: Paquets utilitaires de base
+      ansible.builtin.apt:
+        name:
+          - sudo
+          - curl
+          - wget
+          - vim
+          - htop
+          - tmux
+          - python3-pip
+          - fail2ban
+          - unattended-upgrades
+          - chrony
+        state: present
+
+    - name: Activer chrony (NTP)
+      ansible.builtin.service:
+        name: chrony
+        enabled: yes
+        state: started
+
+    - name: Activer fail2ban
+      ansible.builtin.service:
+        name: fail2ban
+        enabled: yes
+        state: started
+
+  roles:
+    - role: dev-sec.os-hardening
+      tags: hardening
+
+- name: Apps — installation Docker
+  hosts: apps
+  become: true
+  roles:
+    - role: geerlingguy.docker
+      tags: docker
+
+  post_tasks:
+    - name: Créer le répertoire /srv/apps
+      ansible.builtin.file:
+        path: /srv/apps
+        state: directory
+        owner: debian
+        group: debian
+        mode: "0755"
+
+- name: Wazuh — préparation système
+  hosts: siem
+  become: true
+  tasks:
+    - name: Augmenter vm.max_map_count (requis par Wazuh indexer / OpenSearch)
+      ansible.posix.sysctl:
+        name: vm.max_map_count
+        value: "262144"
+        state: present
+        sysctl_set: yes
+        reload: yes
+
+    - name: Créer le répertoire /opt/wazuh-install
+      ansible.builtin.file:
+        path: /opt/wazuh-install
+        state: directory
+        mode: "0700"

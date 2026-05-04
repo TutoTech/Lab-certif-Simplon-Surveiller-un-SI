@@ -1,0 +1,30 @@
+---
+# ============================================================
+#  Rechargement des règles personnalisées Wazuh
+#  À utiliser après modification de roles/wazuh-rules/files/local_rules.xml
+# ============================================================
+
+- name: Mise à jour des règles personnalisées Wazuh
+  hosts: siem
+  become: true
+  tasks:
+    - name: Déployer local_rules.xml
+      ansible.builtin.copy:
+        src: ../roles/wazuh-rules/files/local_rules.xml
+        dest: /var/ossec/etc/rules/local_rules.xml
+        owner: wazuh
+        group: wazuh
+        mode: "0640"
+      notify: restart wazuh-manager
+
+    - name: Tester la config avant redémarrage
+      ansible.builtin.command: /var/ossec/bin/wazuh-logtest -t
+      register: logtest_result
+      changed_when: false
+      failed_when: logtest_result.rc != 0
+
+  handlers:
+    - name: restart wazuh-manager
+      ansible.builtin.systemd:
+        name: wazuh-manager
+        state: restarted

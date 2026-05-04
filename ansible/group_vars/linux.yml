@@ -1,0 +1,20 @@
+---
+# Réglages pour les hôtes Linux (Debian)
+
+# Rôle geerlingguy.docker
+docker_users:
+  - debian
+docker_compose_package: docker-compose-plugin
+docker_install_compose_plugin: true
+
+# Rôle dev-sec.os-hardening (durcissement de base)
+os_auth_pw_max_age: 90
+os_auth_retries: 5
+sysctl_overwrite:
+  net.ipv4.ip_forward: 0
+  net.ipv4.conf.all.rp_filter: 1
+
+# unattended-upgrades
+unattended_origins_patterns:
+  - 'origin=Debian,codename=${distro_codename},label=Debian-Security'
+unattended_automatic_reboot: false

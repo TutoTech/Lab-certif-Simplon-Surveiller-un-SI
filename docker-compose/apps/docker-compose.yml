@@ -1,0 +1,203 @@
+# ============================================================
+#  TutoTech Lab — Stack applicative
+#  Traefik + WordPress + Moodle + AdminGo
+# ============================================================
+# Démarrage : docker compose up -d
+
+networks:
+  edge:
+    name: edge
+  internal:
+    name: internal
+    internal: false
+
+volumes:
+  traefik-letsencrypt:
+  wp-data:
+  wp-db-data:
+  moodle-data:
+  moodle-html:
+  moodle-db-data:
+  admingo-db-data:
+
+services:
+  # ----------------------------------------------------------------
+  # Traefik — reverse proxy
+  # ----------------------------------------------------------------
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.tlschallenge=true"
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      # En lab, on pointe vers le serveur de staging Let's Encrypt (rate-limit moins strict)
+      - "--certificatesresolvers.le.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access.log"
+      - "--accesslog.format=json"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+      - ./traefik/logs:/var/log/traefik
+    networks:
+      - edge
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.lab.tutotech.org`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=le"
+      - "traefik.http.routers.dashboard.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_DASHBOARD_USERS}"
+
+  # ----------------------------------------------------------------
+  # WordPress (site institutionnel)
+  # ----------------------------------------------------------------
+  wp-db:
+    image: mariadb:11
+    container_name: wp-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${WP_DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: ${WP_DB_PASSWORD}
+    volumes:
+      - wp-db-data:/var/lib/mysql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      retries: 5
+
+  wordpress:
+    image: wordpress:6-php8.3-apache
+    container_name: wordpress
+    restart: unless-stopped
+    depends_on:
+      wp-db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: wp-db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${WP_DB_PASSWORD}
+    volumes:
+      - wp-data:/var/www/html
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wp.rule=Host(`wp.lab.tutotech.org`)"
+      - "traefik.http.routers.wp.entrypoints=websecure"
+      - "traefik.http.routers.wp.tls.certresolver=le"
+      - "traefik.http.services.wp.loadbalancer.server.port=80"
+
+  # ----------------------------------------------------------------
+  # Moodle (LMS)
+  # ----------------------------------------------------------------
+  moodle-db:
+    image: mariadb:11
+    container_name: moodle-db
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MOODLE_DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: moodle
+      MARIADB_USER: moodle
+      MARIADB_PASSWORD: ${MOODLE_DB_PASSWORD}
+    volumes:
+      - moodle-db-data:/var/lib/mysql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      retries: 5
+
+  moodle:
+    image: bitnami/moodle:4.5
+    container_name: moodle
+    restart: unless-stopped
+    depends_on:
+      moodle-db:
+        condition: service_healthy
+    environment:
+      MOODLE_DATABASE_TYPE: mariadb
+      MOODLE_DATABASE_HOST: moodle-db
+      MOODLE_DATABASE_PORT_NUMBER: 3306
+      MOODLE_DATABASE_NAME: moodle
+      MOODLE_DATABASE_USER: moodle
+      MOODLE_DATABASE_PASSWORD: ${MOODLE_DB_PASSWORD}
+      MOODLE_USERNAME: ${MOODLE_ADMIN_USER}
+      MOODLE_PASSWORD: ${MOODLE_ADMIN_PASSWORD}
+      MOODLE_EMAIL: ${MOODLE_ADMIN_EMAIL}
+      MOODLE_HOST: lms.lab.tutotech.org
+    volumes:
+      - moodle-data:/bitnami/moodledata
+      - moodle-html:/bitnami/moodle
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.moodle.rule=Host(`lms.lab.tutotech.org`)"
+      - "traefik.http.routers.moodle.entrypoints=websecure"
+      - "traefik.http.routers.moodle.tls.certresolver=le"
+      - "traefik.http.services.moodle.loadbalancer.server.port=8080"
+
+  # ----------------------------------------------------------------
+  # AdminGo — application Flask de révision (build local)
+  # ----------------------------------------------------------------
+  admingo-db:
+    image: postgres:16
+    container_name: admingo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: admingo
+      POSTGRES_USER: admingo
+      POSTGRES_PASSWORD: ${ADMINGO_DB_PASSWORD}
+    volumes:
+      - admingo-db-data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admingo"]
+      interval: 30s
+      retries: 5
+
+  admingo:
+    build: ./admingo
+    container_name: admingo
+    restart: unless-stopped
+    depends_on:
+      admingo-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admingo:${ADMINGO_DB_PASSWORD}@admingo-db:5432/admingo
+      SECRET_KEY: ${ADMINGO_SECRET_KEY}
+      FLASK_ENV: production
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.admingo.rule=Host(`adm.lab.tutotech.org`)"
+      - "traefik.http.routers.admingo.entrypoints=websecure"
+      - "traefik.http.routers.admingo.tls.certresolver=le"
+      - "traefik.http.services.admingo.loadbalancer.server.port=5000"

@@ -1,0 +1,27 @@
+# ============================================================
+#  TutoTech Lab — Variables Terraform
+#  Copiez ce fichier en `terraform.tfvars` et complétez.
+#  ⚠️ Ne commitez JAMAIS terraform.tfvars dans Git.
+# ============================================================
+
+# --- Connexion Proxmox ---
+proxmox_endpoint     = "https://proxmox-simplon.example.com:8006/"
+proxmox_node         = "pve-simplon-01"
+proxmox_api_token    = "terraform@pve!automation=00000000-0000-0000-0000-000000000000"
+proxmox_tls_insecure = true
+
+# --- Réseau ---
+wan_bridge  = "vmbr0"   # bridge Internet du Proxmox Simplon
+lab_bridge  = "vmbr1"   # bridge LAN isolé fourni par Simplon
+
+# --- Stockage ---
+storage_pool = "local-lvm"
+iso_storage  = "local"
+
+# --- SSH (clé publique de votre poste) ---
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx vous@poste"
+
+# --- Réglages lab (valeurs par défaut, à modifier seulement si nécessaire) ---
+# lab_domain  = "lab.tutotech.org"
+# lab_subnet  = "10.10.10.0/24"
+# lab_gateway = "10.10.10.1"
