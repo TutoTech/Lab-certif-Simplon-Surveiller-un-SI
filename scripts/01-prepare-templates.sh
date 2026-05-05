@@ -66,7 +66,10 @@ else
     --vga serial0
 
   qm importdisk "${TEMPLATE_VMID}" "${DEBIAN_IMAGE}" "${STORAGE_DISK}" --format raw
+  # Si vous utilisez un stockage de type répertoire (ex : "local") plutôt qu'un stockage bloc (ex : "local-lvm"),
+  # commentez la ligne suivante et décommentez la ligne alternative qui suit.
   qm set "${TEMPLATE_VMID}" --scsihw virtio-scsi-pci --virtio0 "${STORAGE_DISK}:vm-${TEMPLATE_VMID}-disk-0"
+  # qm set "${TEMPLATE_VMID}" --scsihw virtio-scsi-pci --virtio0 "${STORAGE_DISK}:${TEMPLATE_VMID}/vm-${TEMPLATE_VMID}-disk-0.raw"
   qm set "${TEMPLATE_VMID}" --boot c --bootdisk virtio0
   qm set "${TEMPLATE_VMID}" --ide2 "${STORAGE_DISK}:cloudinit"
   qm template "${TEMPLATE_VMID}"
